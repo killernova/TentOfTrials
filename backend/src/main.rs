@@ -52,6 +52,16 @@ async fn main() -> Result<()> {
     discovery.announce(&cli.node_id).await?;
     broker.connect().await?;
 
+    // Start the HTTP server with request ID propagation middleware.
+    let app = tent_backend::request_id::build_router();
+    let bind_addr = format!("{}:{}", config.service.host, config.service.port);
+    let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
+    tracing::info!(address = %bind_addr, "HTTP server listening with request ID middleware");
+
+    let http_server = tokio::spawn(async move {
+        axum::serve(listener, app).await
+    });
+
     tracing::info!("all subsystems initialized successfully, entering main loop");
 
     let mut signal = tokio::signal::unix::signal(
@@ -64,6 +74,11 @@ async fn main() -> Result<()> {
         }
         _ = tokio::signal::ctrl_c() => {
             tracing::info!("received SIGINT, initiating graceful shutdown");
+        }
+        result = http_server => {
+            if let Err(e) = result {
+                tracing::error!(error = %e, "HTTP server task failed");
+            }
         }
     }
 

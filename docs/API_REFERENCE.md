@@ -36,6 +36,68 @@ For development, use:
 http://localhost:8080/api/v3
 ```
 
+## Request ID Propagation
+
+Every HTTP request processed by the backend is assigned a unique request ID
+that enables log correlation across distributed services.
+
+### Inbound Requests
+
+Clients may supply a request ID via the `X-Request-Id` header:
+
+```
+X-Request-Id: my-custom-id-42
+```
+
+The backend validates the supplied value:
+- It must be **non-empty**.
+- It must be **shorter than 128 characters**.
+
+When the header is missing, empty, or exceeds the length limit, the backend
+generates a UUID v4 and uses it as the request ID instead.
+
+### Outbound Responses
+
+Every response includes the resolved request ID in the `X-Request-Id` header:
+
+```
+X-Request-Id: my-custom-id-42
+```
+
+This holds regardless of whether the ID was client-provided or server-generated.
+
+### Log Correlation
+
+The request ID is attached to the backend's structured log output (via the
+`tracing` crate) for every log line emitted while processing that request.
+Example JSON log entry:
+
+```json
+{
+  "timestamp": "2026-01-01T00:00:00Z",
+  "level": "INFO",
+  "request_id": "my-custom-id-42",
+  "message": "request received"
+}
+```
+
+This allows operators to grep or query logs by request ID to trace a request
+through the entire processing pipeline.
+
+### Health Endpoint
+
+The `/health` endpoint echoes the request ID in its JSON body, making it
+straightforward to verify end-to-end propagation:
+
+```json
+{
+  "status": "ok",
+  "request_id": "my-custom-id-42"
+}
+```
+
+---
+
 ## Authentication
 
 Most endpoints require authentication via Bearer token:
